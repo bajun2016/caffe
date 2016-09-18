@@ -272,7 +272,7 @@ endif
 ifeq ($(OSX), 1)
 	CXX := /usr/bin/clang++
 	ifneq ($(CPU_ONLY), 1)
-		CUDA_VERSION := $(shell $(CUDA_DIR)/bin/nvcc -V | grep -o 'release \d' | grep -o '\d')
+		CUDA_VERSION := $(shell $(CUDA_DIR)/bin/nvcc -V | grep -o 'release [0-9.]*' | tr -d '[a-z ]')
 		ifeq ($(shell echo | awk '{exit $(CUDA_VERSION) < 7.0;}'), 1)
 			CXXFLAGS += -stdlib=libstdc++
 			LINKFLAGS += -stdlib=libstdc++
@@ -316,10 +316,10 @@ endif
 
 # Debugging
 ifeq ($(DEBUG), 1)
-	COMMON_FLAGS += -DDEBUG -g -O0
+	COMMON_FLAGS += -DDEBUG -g -O0 -std=c++11
 	NVCCFLAGS += -G
 else
-	COMMON_FLAGS += -DNDEBUG -O2
+	COMMON_FLAGS += -DNDEBUG -O2 -std=c++11
 endif
 
 # cuDNN acceleration configuration.
@@ -364,9 +364,9 @@ ifeq ($(BLAS), mkl)
 	# MKL
 	LIBRARIES += mkl_rt
 	COMMON_FLAGS += -DUSE_MKL
-	MKL_DIR ?= /opt/intel/mkl
-	BLAS_INCLUDE ?= $(MKL_DIR)/include
-	BLAS_LIB ?= $(MKL_DIR)/lib $(MKL_DIR)/lib/intel64
+	MKLROOT ?= /opt/intel/mkl
+	BLAS_INCLUDE ?= $(MKLROOT)/include
+	BLAS_LIB ?= $(MKLROOT)/lib $(MKLROOT)/lib/intel64
 else ifeq ($(BLAS), open)
 	# OpenBLAS
 	LIBRARIES += openblas
@@ -406,6 +406,8 @@ CXXFLAGS += -pthread -fPIC $(COMMON_FLAGS) $(WARNINGS)
 NVCCFLAGS += -ccbin=$(CXX) -Xcompiler -fPIC $(COMMON_FLAGS)
 # mex may invoke an older gcc that is too liberal with -Wuninitalized
 MATLAB_CXXFLAGS := $(CXXFLAGS) -Wno-uninitialized
+MATLAB_INCLUDE := -I$(MATLAB_DIR)/toolbox/distcomp/gpu/extern/include
+MATLAB_LIBS := -lmwgpu
 LINKFLAGS += -pthread -fPIC $(COMMON_FLAGS) $(WARNINGS)
 
 USE_PKG_CONFIG ?= 0
@@ -514,7 +516,8 @@ $(MAT$(PROJECT)_SO): $(MAT$(PROJECT)_SRC) $(STATIC_NAME)
 	$(Q)$(MATLAB_DIR)/bin/mex $(MAT$(PROJECT)_SRC) \
 			CXX="$(CXX)" \
 			CXXFLAGS="\$$CXXFLAGS $(MATLAB_CXXFLAGS)" \
-			CXXLIBS="\$$CXXLIBS $(STATIC_LINK_COMMAND) $(LDFLAGS)" -output $@
+            INCLUDE="\$$INCLUDE $(MATLAB_INCLUDE)" \
+			CXXLIBS="\$$CXXLIBS $(STATIC_LINK_COMMAND) $(LDFLAGS) $(MATLAB_LIBS)" -output $@
 	@ if [ -f "$(PROJECT)_.d" ]; then \
 		mv -f $(PROJECT)_.d $(BUILD_DIR)/${MAT$(PROJECT)_SO:.$(MAT_SO_EXT)=.d}; \
 	fi

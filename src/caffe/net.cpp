@@ -28,11 +28,20 @@ Net<Dtype>::Net(const NetParameter& param, const Net* root_net)
 }
 
 template <typename Dtype>
-Net<Dtype>::Net(const string& param_file, Phase phase, const Net* root_net)
+Net<Dtype>::Net(const string& param_file, Phase phase,
+    const int level, const vector<string>* stages,
+    const Net* root_net)
     : root_net_(root_net) {
   NetParameter param;
   ReadNetParamsFromTextFileOrDie(param_file, &param);
+  // Set phase, stages and level
   param.mutable_state()->set_phase(phase);
+  if (stages != NULL) {
+    for (int i = 0; i < stages->size(); i++) {
+      param.mutable_state()->add_stage((*stages)[i]);
+    }
+  }
+  param.mutable_state()->set_level(level);
   Init(param);
 }
 
@@ -275,6 +284,16 @@ void Net<Dtype>::Init(const NetParameter& in_param) {
 }
 
 template <typename Dtype>
+void Net<Dtype>::SetPhase(Phase phase) {
+  // set all layers
+  for (int i = 0; i < layers_.size(); ++i) {
+    layers_[i]->set_phase(phase);
+  }
+  // set net phase
+  phase_ = phase;
+}
+
+template <typename Dtype>
 void Net<Dtype>::FilterNet(const NetParameter& param,
     NetParameter* param_filtered) {
   NetState net_state(param.state());
@@ -427,12 +446,11 @@ int Net<Dtype>::AppendBottom(const NetParameter& param, const int layer_id,
   bottom_vecs_[layer_id].push_back(blobs_[blob_id].get());
   bottom_id_vecs_[layer_id].push_back(blob_id);
   available_blobs->erase(blob_name);
-  bool propagate_down = true;
+  bool need_backward = blob_need_backward_[blob_id];
   // Check if the backpropagation on bottom_id should be skipped
-  if (layer_param.propagate_down_size() > 0)
-    propagate_down = layer_param.propagate_down(bottom_id);
-  const bool need_backward = blob_need_backward_[blob_id] &&
-                          propagate_down;
+  if (layer_param.propagate_down_size() > 0) {
+    need_backward = layer_param.propagate_down(bottom_id);
+  }
   bottom_need_backward_[layer_id].push_back(need_backward);
   return blob_id;
 }
@@ -753,7 +771,7 @@ void Net<Dtype>::CopyTrainedLayersFrom(const NetParameter& param) {
       LOG(INFO) << "Ignoring source layer " << source_layer_name;
       continue;
     }
-    DLOG(INFO) << "Copying source layer " << source_layer_name;
+    LOG(INFO) << "Copying source layer " << source_layer_name;
     vector<shared_ptr<Blob<Dtype> > >& target_blobs =
         layers_[target_layer_id]->blobs();
     CHECK_EQ(target_blobs.size(), source_layer.blobs_size())
